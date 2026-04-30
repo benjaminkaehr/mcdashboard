@@ -461,7 +461,7 @@ What each field does:
 systemctl --user restart dashboard
 ```
 
-###If this is the first time setting up, you dont have a tunnel yet. Go back to [## 7. Run the dashboard as a service](#7.-Run-the-dashboard-as-a-service)
+If this is the first time setting up, you dont have a tunnel yet. Go back to [## 7. Run the dashboard as a service](#7.-Run-the-dashboard-as-a-service)
 
 Then in your browser:
 
