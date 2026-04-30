@@ -407,44 +407,12 @@ This is the file that tells the dashboard your server exists.
 nano /srv/dashboard/servers.json
 ```
 
-It looks like this:
+Replace the contents with one entry per server. For our `creative01` example:
 
 ```json
 {
-  "_comment": "Registry of Minecraft servers …",
+  "_comment": "Registry of Minecraft servers managed by the dashboard.",
   "servers": [
-    {
-      "name": "vanilla",
-      "display_name": "Vanilla",
-      "folder": "/srv/mcserv/fabric01",
-      "systemd_unit": "mc-vanilla.service",
-      "rcon": {
-        "host": "127.0.0.1",
-        "port": 25575,
-        "password_env": "RCON_PASSWORD_VANILLA"
-      }
-    }
-  ]
-}
-```
-
-Add a new entry inside the `servers` array. **Don't forget the comma** after the previous entry's closing `}`:
-
-```json
-{
-  "_comment": "Registry of Minecraft servers …",
-  "servers": [
-    {
-      "name": "vanilla",
-      "display_name": "Vanilla",
-      "folder": "/srv/mcserv/fabric01",
-      "systemd_unit": "mc-vanilla.service",
-      "rcon": {
-        "host": "127.0.0.1",
-        "port": 25575,
-        "password_env": "RCON_PASSWORD_VANILLA"
-      }
-    },
     {
       "name": "creative01",
       "display_name": "Creative",
@@ -476,6 +444,16 @@ What each field does:
 > ```bash
 > node -e "JSON.parse(require('fs').readFileSync('/srv/dashboard/servers.json'))" && echo OK
 > ```
+
+> **Adding a second, third, fourth server later?** Just add another object to the `servers` array. **Don't forget the comma** between entries:
+> ```json
+> "servers": [
+>   { "name": "creative01", ... },
+>   { "name": "survival02", ... },
+>   { "name": "modded03",   ... }
+> ]
+> ```
+> Each entry needs its own folder, unique server port, unique RCON port, unique RCON password, and matching `RCON_PASSWORD_<NAME>` in `.env`.
 
 ## Step 6 — Restart the dashboard and grant access
 
