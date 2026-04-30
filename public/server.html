@@ -38,8 +38,21 @@
     }
     .player-name { font-weight: bold; font-size: 1rem; }
     .player-detail { font-size: 0.85rem; color: var(--fg-muted, #888); font-family: monospace; white-space: pre; }
-    .mc-bar { display: flex; gap: 1px; margin-top: 0.2rem; font-size: 1rem; line-height: 1; }
-    .mc-bar span { display: inline-block; }
+    .mc-bar { display: flex; gap: 2px; margin-top: 0.3rem; align-items: center; }
+    .mc-pip {
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .mc-pip.full  { opacity: 1; }
+    .mc-pip.half  { opacity: 1; position: relative; overflow: hidden; background: transparent !important; }
+    .mc-pip.half::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0;
+      width: 50%; height: 100%;
+    }
+    .mc-pip.empty { opacity: 0.18; }
   </style>
 </head>
 <body>
@@ -241,42 +254,42 @@
               text    += 'world:  ' + dim;
               detail.textContent = text;
 
-              if (hp !== null) {
-                const hpLabel = el('div', { class: 'player-detail' }, '♥ health: ' + hp.toFixed(1) + ' / 20');
-                card.appendChild(hpLabel);
-                const hpBar = el('div', { class: 'mc-bar' });
+              function makePip(state, color) {
+                const pip = el('div', { class: 'mc-pip ' + state });
+                pip.style.background = color;
+                if (state === 'half') {
+                  pip.style.background = 'transparent';
+                  pip.style.border = '1px solid ' + color;
+                  const half = el('div', {});
+                  half.style.cssText = 'position:absolute;left:0;top:0;width:50%;height:100%;background:' + color;
+                  pip.appendChild(half);
+                } else if (state === 'empty') {
+                  pip.style.background = color;
+                }
+                return pip;
+              }
+
+              function makeBar(value, color) {
+                const bar = el('div', { class: 'mc-bar' });
                 for (let i = 0; i < 10; i++) {
                   const threshold = (i + 1) * 2;
-                  let s;
-                  if (hp >= threshold) {
-                    s = el('span', {}, '♥'); s.style.color = '#e05252';
-                  } else if (hp >= threshold - 1) {
-                    s = el('span', {}, '♥'); s.style.color = '#e05252'; s.style.opacity = '0.45';
-                  } else {
-                    s = el('span', {}, '♥'); s.style.color = '#444';
-                  }
-                  hpBar.appendChild(s);
+                  let state;
+                  if (value >= threshold)          state = 'full';
+                  else if (value >= threshold - 1) state = 'half';
+                  else                             state = 'empty';
+                  bar.appendChild(makePip(state, color));
                 }
-                card.appendChild(hpBar);
+                return bar;
+              }
+
+              if (hp !== null) {
+                card.appendChild(el('div', { class: 'player-detail' }, 'health: ' + hp.toFixed(1) + ' / 20'));
+                card.appendChild(makeBar(hp, '#e05252'));
               }
 
               if (food !== null) {
-                const foodLabel = el('div', { class: 'player-detail' }, '🍗 food:   ' + food + ' / 20');
-                const foodBar = el('div', { class: 'mc-bar' });
-                for (let i = 0; i < 10; i++) {
-                  const threshold = (i + 1) * 2;
-                  let s;
-                  if (food >= threshold) {
-                    s = el('span', {}, '🍗');
-                  } else if (food >= threshold - 1) {
-                    s = el('span', {}, '🍗'); s.style.opacity = '0.4';
-                  } else {
-                    s = el('span', {}, '🍗'); s.style.opacity = '0.15';
-                  }
-                  foodBar.appendChild(s);
-                }
-                card.appendChild(foodLabel);
-                card.appendChild(foodBar);
+                card.appendChild(el('div', { class: 'player-detail' }, 'food:   ' + food + ' / 20'));
+                card.appendChild(makeBar(food, '#c8a030'));
               }
             } catch {
               detail.textContent = 'could not fetch details';
