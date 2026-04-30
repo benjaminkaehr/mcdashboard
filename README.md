@@ -122,7 +122,7 @@ sudo chown -R $USER:$USER /srv/dashboard
 cd /srv/dashboard
 
 # Drop the dashboard files in here.
-# Either: git clone <your repo> .
+# Either: git clone https://github.com/b3dag/mcdashboard .
 # Or:     unzip the release archive into the current directory.
 
 npm install
