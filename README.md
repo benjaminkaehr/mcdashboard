@@ -167,11 +167,7 @@ You'll be prompted for a password (12 character minimum). After this user exists
 > node scripts/create-user.js mael --super
 > ```
 
-## 6. Set up your first Minecraft server
-
-See the [Adding a new Minecraft server](#adding-a-new-minecraft-server) section. Come back here when you have one running.
-
-## 7. Run the dashboard as a service
+## 6. Run the dashboard as a service
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -184,7 +180,7 @@ systemctl --user status dashboard
 
 It should say `active (running)` and listen on `127.0.0.1:8080`.
 
-## 8. Set up Cloudflare Tunnel
+## 7. Set up Cloudflare Tunnel
 
 Install cloudflared:
 
@@ -235,7 +231,7 @@ systemctl --user status cloudflared
 
 Visit `https://dash.YOUR_DOMAIN_NAME.com`. You should see the login page.
 
-## 9. (Optional) In-browser terminal
+## 8. (Optional) In-browser terminal
 
 The dashboard can proxy a real bash shell at `/terminal.html`, gated to super-operators only.
 
@@ -268,9 +264,13 @@ Visit `https://dash.YOUR_DOMAIN_NAME.com/terminal.html` — you should get a bas
 
 ---
 
+You now have a working dashboard with no servers in it yet. Move on to [Adding a new Minecraft server](#adding-a-new-minecraft-server) to add your first one.
+
+---
+
 # Adding a new Minecraft server
 
-You'll do this every time you want to host another modpack or version. There are **four files** to touch and **three commands** to run.
+This is the workflow you run **every time you add a server** — both for your first one after initial setup, and for any additional ones later. There are **four files** to touch and **three commands** to run.
 
 We'll set up a server called `creative01` as the example. Substitute your own name throughout.
 
@@ -350,7 +350,7 @@ server-port=25566
 ## Step 3 — Create the systemd unit
 
 ```bash
-mkdir -p ~/.config/systemd/user       #sometimes the folder doesnt exist idk
+mkdir -p ~/.config/systemd/user      # sometimes this folder doesn't exist yet
 cp /srv/dashboard/systemd/mc-vanilla.service ~/.config/systemd/user/mc-creative01.service
 nano ~/.config/systemd/user/mc-creative01.service
 ```
@@ -460,8 +460,6 @@ What each field does:
 ```bash
 systemctl --user restart dashboard
 ```
-
-If this is the first time setting up, you dont have a tunnel yet. Go back to [7. Run the dashboard as a service](##7.-Run-the-dashboard-as-a-service)
 
 Then in your browser:
 
