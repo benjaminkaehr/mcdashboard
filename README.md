@@ -521,7 +521,9 @@ node scripts/create-user.js friend --super
 
 ## Viewing the audit log
 
-Every state change is logged. Quickest way to read it:
+Every state change is logged. The web interface provides search and filtering capabilities.
+
+Quickest way to read it via SQLite:
 
 ```bash
 sqlite3 /srv/dashboard/data/dashboard.db \
@@ -532,6 +534,17 @@ Or via API (super-only):
 
 ```
 GET https://dash.YOUR_DOMAIN_NAME.com/api/audit?limit=200
+```
+
+The web interface at `/audit.html` provides:
+- Search by username, IP, action, or target
+- Date range filtering
+- Pagination for large result sets
+- CSV export functionality
+
+Export API:
+```
+GET https://dash.YOUR_DOMAIN_NAME.com/api/audit/export?username=admin&from=2024-01-01
 ```
 
 ## Updating the dashboard code

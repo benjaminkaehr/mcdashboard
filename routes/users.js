@@ -107,7 +107,93 @@ export default async function (app) {
   });
 
   app.get('/api/audit', { preHandler: requireSuper }, async (req) => {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
-    return { entries: stmts.recentAudit.all(limit) };
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 1000);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    // Search parameters
+    const username = req.query.username?.trim() || null;
+    const ip = req.query.ip?.trim() || null;
+    const action = req.query.action?.trim() || null;
+    const target = req.query.target?.trim() || null;
+    const fromDate = req.query.from ? new Date(req.query.from).getTime() : null;
+    const toDate = req.query.to ? new Date(req.query.to).getTime() : null;
+
+    // Prepare LIKE patterns (empty string means no filter)
+    const usernamePattern = username ? `%${username}%` : '';
+    const ipPattern = ip ? `%${ip}%` : '';
+    const actionPattern = action ? `%${action}%` : '';
+    const targetPattern = target ? `%${target}%` : '';
+    const fromTimestamp = fromDate || 0;
+    const toTimestamp = toDate || 0;
+
+    // Get total count for pagination
+    const countResult = stmts.countAudit.get(
+      usernamePattern, username || '',
+      ipPattern, ip || '',
+      actionPattern, action || '',
+      targetPattern, target || '',
+      fromTimestamp, fromDate || 0,
+      toTimestamp, toDate || 0
+    );
+
+    // Get filtered results with pagination
+    const entries = stmts.searchAudit.all(
+      usernamePattern, username || '',
+      ipPattern, ip || '',
+      actionPattern, action || '',
+      targetPattern, target || '',
+      fromTimestamp, fromDate || 0,
+      toTimestamp, toDate || 0,
+      limit
+    );
+
+    return {
+      entries,
+      total: countResult.total,
+      limit,
+      offset
+    };
+  });
+
+  app.get('/api/audit/export', { preHandler: requireSuper }, async (req, reply) => {
+    const username = req.query.username?.trim() || null;
+    const ip = req.query.ip?.trim() || null;
+    const action = req.query.action?.trim() || null;
+    const target = req.query.target?.trim() || null;
+    const fromDate = req.query.from ? new Date(req.query.from).getTime() : null;
+    const toDate = req.query.to ? new Date(req.query.to).getTime() : null;
+
+    // Prepare LIKE patterns (empty string means no filter)
+    const usernamePattern = username ? `%${username}%` : '';
+    const ipPattern = ip ? `%${ip}%` : '';
+    const actionPattern = action ? `%${action}%` : '';
+    const targetPattern = target ? `%${target}%` : '';
+    const fromTimestamp = fromDate || 0;
+    const toTimestamp = toDate || 0;
+
+    // Get all matching entries (no limit for export)
+    const entries = stmts.searchAudit.all(
+      usernamePattern, username || '',
+      ipPattern, ip || '',
+      actionPattern, action || '',
+      targetPattern, target || '',
+      fromTimestamp, fromDate || 0,
+      toTimestamp, toDate || 0,
+      10000 // Reasonable limit for export
+    );
+
+    // Convert to CSV
+    const csvHeader = 'timestamp,username,ip,action,target,details\n';
+    const csvRows = entries.map(entry => {
+      const timestamp = new Date(entry.ts).toISOString();
+      const details = entry.details ? JSON.stringify(entry.details).replace(/"/g, '""') : '';
+      return `"${timestamp}","${entry.username || ''}","${entry.ip || ''}","${entry.action}","${entry.target || ''}","${details}"`;
+    }).join('\n');
+
+    const csv = csvHeader + csvRows;
+
+    reply.header('Content-Type', 'text/csv');
+    reply.header('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().split('T')[0]}.csv"`);
+    return csv;
   });
 }

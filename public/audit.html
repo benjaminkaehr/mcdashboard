@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>audit log - minecraft dashboard</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .audit-filters {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 1rem;
+      border-radius: 0.25rem;
+      margin-bottom: 1rem;
+    }
+    .audit-filters .row {
+      margin-bottom: 0.5rem;
+    }
+    .audit-filters .row:last-child {
+      margin-bottom: 0;
+    }
+    .audit-entry {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font);
+      font-size: 0.9rem;
+    }
+    .audit-entry:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .audit-timestamp {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .audit-action {
+      font-weight: bold;
+      color: var(--accent);
+    }
+    .audit-target {
+      color: var(--norm);
+    }
+    .audit-details {
+      margin-top: 0.25rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .pagination button {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.82rem;
+      padding: 0.45rem 0.95rem;
+      cursor: pointer;
+      border-radius: 0;
+      transition: border-color 0.15s;
+    }
+    .pagination button:hover {
+      border-color: var(--fg);
+    }
+    .pagination button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .pagination .current {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+    .audit-filters input, .audit-filters select {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 0.5rem 0.6rem;
+      outline: none;
+      border-radius: 0;
+      transition: border-color 0.15s;
+    }
+    .audit-filters input:focus {
+      border-color: var(--fg);
+    }
+  </style>
+</head>
+<body>
+  <main id="main"></main>
+
+  <script type="module">
+    import { api, renderHeader, renderFooter, el, fmtDate } from '/app.js';
+
+    const me = await renderHeader('audit');
+    if (!me) throw new Error();
+    renderFooter();
+
+    const main = document.getElementById('main');
+
+    if (!me.is_super) {
+      main.appendChild(el('h1', {}, 'no access'));
+      main.appendChild(el('p', { class: 'muted' }, 'super-operator only.'));
+      throw new Error();
+    }
+
+    main.appendChild(el('h1', {}, 'audit log'));
+    main.appendChild(el('p', { class: 'muted' }, 'view and search all state-changing actions in the dashboard.'));
+
+    // Filters
+    const filters = el('div', { class: 'audit-filters' });
+    filters.appendChild(el('h3', {}, 'filters'));
+
+    const usernameFilter = el('input', { type: 'text', placeholder: 'username' });
+    const ipFilter = el('input', { type: 'text', placeholder: 'IP address' });
+    const actionFilter = el('input', { type: 'text', placeholder: 'action' });
+    const targetFilter = el('input', { type: 'text', placeholder: 'target' });
+    const fromDateFilter = el('input', { type: 'date' });
+    const toDateFilter = el('input', { type: 'date' });
+
+    filters.appendChild(el('div', { class: 'row' }, [
+      el('label', {}, 'Username:'), usernameFilter,
+      el('label', {}, 'IP:'), ipFilter,
+    ]));
+    filters.appendChild(el('div', { class: 'row' }, [
+      el('label', {}, 'Action:'), actionFilter,
+      el('label', {}, 'Target:'), targetFilter,
+    ]));
+    filters.appendChild(el('div', { class: 'row' }, [
+      el('label', {}, 'From date:'), fromDateFilter,
+      el('label', {}, 'To date:'), toDateFilter,
+      el('button', { class: 'btn primary', onclick: () => { currentPage = 1; loadAudit() } }, 'search'),
+      el('button', { class: 'btn', onclick: clearFilters }, 'clear'),
+      el('button', { class: 'btn export-btn', onclick: exportAudit }, 'export CSV'),
+    ]));
+
+    main.appendChild(filters);
+
+    // Results
+    const results = el('div');
+    main.appendChild(results);
+
+    // Pagination
+    const pagination = el('div', { class: 'pagination' });
+    main.appendChild(pagination);
+
+    let currentPage = 1;
+    const pageSize = 50;
+    let totalEntries = 0;
+
+    async function loadAudit() {
+      try {
+        const params = new URLSearchParams({
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+        });
+
+        if (usernameFilter.value.trim()) params.set('username', usernameFilter.value.trim());
+        if (ipFilter.value.trim()) params.set('ip', ipFilter.value.trim());
+        if (actionFilter.value.trim()) params.set('action', actionFilter.value.trim());
+        if (targetFilter.value.trim()) params.set('target', targetFilter.value.trim());
+        if (fromDateFilter.value) params.set('from', fromDateFilter.value);
+        if (toDateFilter.value) params.set('to', toDateFilter.value);
+
+        const data = await api('/api/audit?' + params);
+        displayAudit(data.entries);
+        totalEntries = data.total;
+        updatePagination();
+      } catch (err) {
+        results.innerHTML = '<p class="error">Failed to load audit log: ' + err.message + '</p>';
+      }
+    }
+
+    function displayAudit(entries) {
+      results.innerHTML = '';
+      if (entries.length === 0) {
+        results.appendChild(el('p', { class: 'muted' }, 'no entries found.'));
+        return;
+      }
+
+      for (const entry of entries) {
+        const entryDiv = el('div', { class: 'audit-entry' });
+
+        const header = el('div', {}, [
+          el('span', { class: 'audit-timestamp' }, fmtDate(entry.ts)),
+          ' ',
+          el('span', { class: 'audit-action' }, entry.action),
+          entry.target ? el('span', { class: 'audit-target' }, ' on ' + entry.target) : null,
+          entry.username ? el('span', {}, ' by ' + entry.username) : null,
+          entry.ip ? el('span', { class: 'muted' }, ' from ' + entry.ip) : null,
+        ]);
+
+        entryDiv.appendChild(header);
+
+        if (entry.details) {
+          try {
+            const details = JSON.parse(entry.details);
+            const detailsStr = Object.entries(details)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(', ');
+            entryDiv.appendChild(el('div', { class: 'audit-details' }, detailsStr));
+          } catch {
+            entryDiv.appendChild(el('div', { class: 'audit-details' }, entry.details));
+          }
+        }
+
+        results.appendChild(entryDiv);
+      }
+    }
+
+    function updatePagination() {
+      pagination.innerHTML = '';
+      const totalPages = Math.ceil(totalEntries / pageSize);
+
+      if (totalPages <= 1) return;
+
+      // Previous button
+      const prevBtn = el('button', {
+        onclick: () => { currentPage--; loadAudit(); },
+        disabled: currentPage <= 1
+      }, '←');
+      pagination.appendChild(prevBtn);
+
+      // Page numbers
+      const startPage = Math.max(1, currentPage - 2);
+      const endPage = Math.min(totalPages, currentPage + 2);
+
+      for (let i = startPage; i <= endPage; i++) {
+        const pageBtn = el('button', {
+          class: i === currentPage ? 'current' : '',
+          onclick: () => { currentPage = i; loadAudit(); }
+        }, i.toString());
+        pagination.appendChild(pageBtn);
+      }
+
+      // Next button
+      const nextBtn = el('button', {
+        onclick: () => { currentPage++; loadAudit(); },
+        disabled: currentPage >= totalPages
+      }, '→');
+      pagination.appendChild(nextBtn);
+
+      // Total count
+      pagination.appendChild(el('span', { class: 'muted', style: 'margin-left: 1rem;' },
+        `Total: ${totalEntries} entries`));
+    }
+
+    function clearFilters() {
+      usernameFilter.value = '';
+      ipFilter.value = '';
+      actionFilter.value = '';
+      targetFilter.value = '';
+      fromDateFilter.value = '';
+      toDateFilter.value = '';
+      currentPage = 1;
+      loadAudit();
+    }
+
+    async function exportAudit() {
+      try {
+        const params = new URLSearchParams();
+        if (usernameFilter.value.trim()) params.set('username', usernameFilter.value.trim());
+        if (ipFilter.value.trim()) params.set('ip', ipFilter.value.trim());
+        if (actionFilter.value.trim()) params.set('action', actionFilter.value.trim());
+        if (targetFilter.value.trim()) params.set('target', targetFilter.value.trim());
+        if (fromDateFilter.value) params.set('from', fromDateFilter.value);
+        if (toDateFilter.value) params.set('to', toDateFilter.value);
+
+        const url = '/api/audit/export?' + params;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'audit-log.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        alert('Export failed: ' + err.message);
+      }
+    }
+
+    // Initial load
+    loadAudit();
+  </script>
+</body>
+</html>

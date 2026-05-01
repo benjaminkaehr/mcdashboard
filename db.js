@@ -109,6 +109,27 @@ export const stmts = {
     SELECT ts, username, ip, action, target, details
     FROM audit_log ORDER BY ts DESC LIMIT ?
   `),
+  searchAudit: db.prepare(`
+    SELECT ts, username, ip, action, target, details
+    FROM audit_log
+    WHERE (username LIKE ? OR ? = '')
+      AND (ip LIKE ? OR ? = '')
+      AND (action LIKE ? OR ? = '')
+      AND (target LIKE ? OR ? = '')
+      AND (ts >= ? OR ? = 0)
+      AND (ts <= ? OR ? = 0)
+    ORDER BY ts DESC LIMIT ?
+  `),
+  countAudit: db.prepare(`
+    SELECT COUNT(*) as total
+    FROM audit_log
+    WHERE (username LIKE ? OR ? = '')
+      AND (ip LIKE ? OR ? = '')
+      AND (action LIKE ? OR ? = '')
+      AND (target LIKE ? OR ? = '')
+      AND (ts >= ? OR ? = 0)
+      AND (ts <= ? OR ? = 0)
+  `),
 
   getServerSetting:    db.prepare('SELECT value FROM server_settings WHERE server_name = ? AND key = ?'),
   setServerSetting:    db.prepare(`
