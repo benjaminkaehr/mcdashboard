@@ -19,6 +19,8 @@ import {
 import { getEmptySince } from '../auto-stop.js';
 import { audit } from '../audit.js';
 import { requireAuth, requireRole } from '../roles.js';
+import { fork } from 'node:child_process';
+import path from 'node:path';
 
 const MC_USERNAME = /^[a-zA-Z0-9_]{3,16}$/;
 const ALLOWED_AUTO_STOP = [0, 5, 15, 30, 60, 120];
@@ -262,6 +264,31 @@ export default async function (app) {
     }
 
     return { minutes, running: true, players, empty_since: emptySince, stops_in_seconds: stopsInSeconds };
+  });
+
+  /* ---- server creation ---- */
+  app.post('/api/servers/create', { preHandler: requireSuper }, async (req, reply) => {
+    const { name, display, type, version, port, rconPort, ramMax, ramMin } = req.body;
+
+    // Security check for the server name
+    if (!/^[a-z0-9-]+$/.test(name)) {
+      return reply.code(400).send({ error: 'Invalid name (lowercase, numbers, and hyphens only)' });
+    }
+
+    const scriptPath = path.join(process.cwd(), 'scripts', 'add-server.js');
+
+    // Launch the script in the background
+    const child = fork(scriptPath, [
+      name, display, type, version, port, rconPort, ramMax, ramMin
+    ], {
+      detached: true,
+      stdio: 'ignore'
+    });
+
+    child.unref(); // Allow the dashboard to keep running independently
+
+    audit(req, 'server.create_initiated', name, { display, type, version });
+    return { ok: true, message: 'Server creation started in the background.' };
   });
 
   /* ---------- file management ---------- */

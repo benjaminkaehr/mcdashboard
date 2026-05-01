@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>add server - minecraft dashboard</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main id="main">
+    <h1>add new server</h1>
+    <p class="muted">provision a new minecraft instance on the system.</p>
+
+    <form class="form mt-2" id="add-server-form" style="max-width: 500px;">
+      <div class="form-group">
+        <label for="name">server id (lowercase, no spaces)</label>
+        <input type="text" id="name" placeholder="e.g. survival-01" required />
+      </div>
+      <div class="form-group">
+        <label for="display">display name</label>
+        <input type="text" id="display" placeholder="e.g. My Survival World" required />
+      </div>
+      <div class="form-group">
+        <label for="type">server type</label>
+        <select id="type">
+          <option value="1">Vanilla (Official)</option>
+          <option value="2">Fabric (Modded)</option>
+          <option value="3">Paper (Performance)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="version">minecraft version</label>
+        <input type="text" id="version" value="1.21.1" required />
+      </div>
+      <div class="row">
+        <div class="form-group" style="flex: 1;">
+          <label for="port">game port</label>
+          <input type="number" id="port" value="25565" required />
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="rconPort">rcon port</label>
+          <input type="number" id="rconPort" value="25575" required />
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group" style="flex: 1;">
+          <label for="ramMax">max ram (GB)</label>
+          <input type="text" id="ramMax" value="4G" required />
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="ramMin">min ram (GB)</label>
+          <input type="text" id="ramMin" value="2G" required />
+        </div>
+      </div>
+      
+      <button type="submit" class="btn primary" id="submit-btn">create server</button>
+      <p class="form-status" id="status"></p>
+    </form>
+  </main>
+
+  <script type="module">
+    import { api, renderHeader, renderFooter, el } from '/app.js';
+
+    const me = await renderHeader('add-server');
+    if (!me || !me.is_super) {
+        document.getElementById('main').innerHTML = '<h1>no access</h1><p class="muted">super-operator only.</p>';
+        throw new Error();
+    }
+    renderFooter();
+
+    const form = document.getElementById('add-server-form');
+    const status = document.getElementById('status');
+    const btn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      if (!confirm('This will start a background process to download and setup the server. Continue?')) return;
+
+      btn.disabled = true;
+      status.textContent = 'Starting installation... check Audit Log for progress.';
+      status.className = 'form-status success';
+
+      try {
+        const body = {
+          name: document.getElementById('name').value.trim(),
+          display: document.getElementById('display').value.trim(),
+          type: document.getElementById('type').value,
+          version: document.getElementById('version').value.trim(),
+          port: document.getElementById('port').value,
+          rconPort: document.getElementById('rconPort').value,
+          ramMax: document.getElementById('ramMax').value.trim(),
+          ramMin: document.getElementById('ramMin').value.trim(),
+        };
+
+        await api('/api/servers/create', {
+          method: 'POST',
+          body: body
+        });
+
+        alert('Server installation triggered! The dashboard will restart automatically when finished. Redirecting to home...');
+        location.href = '/index.html';
+      } catch (err) {
+        status.textContent = err.message;
+        status.className = 'form-status error';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
