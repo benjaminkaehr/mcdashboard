@@ -2,8 +2,12 @@
 /* =========================================================
    scripts/create-user.js — bootstrap a dashboard user.
    ---------------------------------------------------------
-   Run from the project root: 
+   Run from the project root:
      node scripts/create-user.js <username> [--super]
+
+   Works interactively (with hidden password input) OR with
+   passwords piped on stdin (one per line, password then confirm):
+     printf 'mypass\nmypass\n' | node scripts/create-user.js name --super
    ========================================================= */
 
 import { readFileSync } from 'node:fs';
@@ -44,8 +48,12 @@ if (stmts.getUserByUsername.get(username)) {
   process.exit(1);
 }
 
+/* If stdin is a TTY use raw-mode hidden input.
+   Otherwise fall back to a plain readline (works when piped). */
+const isInteractive = stdin.isTTY === true;
+
 async function prompt(label, hide = false) {
-  if (!hide) {
+  if (!hide || !isInteractive) {
     const rl = readline.createInterface({ input: stdin, output: stdout });
     const v = await rl.question(label);
     rl.close();
