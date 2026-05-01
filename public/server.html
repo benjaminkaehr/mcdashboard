@@ -310,6 +310,9 @@
       const asStatus = el('span', { class: 'muted' }, 'loading...');
       asBody.appendChild(el('div', { class: 'row' }, [asSelect, asStatus]));
 
+      const asLive = el('p', { class: 'muted', style: 'margin-top:0.75rem;font-family:monospace;' }, '—');
+      asBody.appendChild(asLive);
+
       try {
         const r = await api('/api/servers/' + name + '/auto-stop');
         asSelect.value = String(r.minutes);
@@ -329,6 +332,7 @@
           asSelect.dataset.previous = String(minutes);
           asStatus.textContent = 'saved.';
           setTimeout(() => { asStatus.textContent = ''; }, 1500);
+          loadAutoStopStatus();
         } catch (err) {
           asSelect.value = previous;
           asStatus.textContent = 'error: ' + err.message;
@@ -336,12 +340,49 @@
       });
       asSelect.dataset.previous = asSelect.value;
 
+      function fmtSeconds(s) {
+        if (s == null) return '—';
+        const m = Math.floor(s / 60);
+        const ss = s % 60;
+        if (m === 0) return ss + 's';
+        return m + 'm ' + ss + 's';
+      }
+
+      async function loadAutoStopStatus() {
+        try {
+          const r = await api('/api/servers/' + name + '/auto-stop/status');
+          if (!r.running) {
+            asLive.textContent = 'server is offline.';
+          } else if (r.minutes === 0) {
+            asLive.textContent = 'auto-stop is off.';
+          } else if (r.players === null) {
+            asLive.textContent = 'rcon not responding — cannot determine player count.';
+          } else if (r.players > 0) {
+            asLive.textContent = r.players + ' player' + (r.players !== 1 ? 's' : '') + ' online — server will not auto-stop.';
+          } else if (r.stops_in_seconds !== null) {
+            asLive.textContent = 'no players online — server stops in ' + fmtSeconds(r.stops_in_seconds) + '.';
+          } else {
+            asLive.textContent = 'no players online — timer will start at next check.';
+          }
+        } catch (err) {
+          asLive.textContent = 'status error: ' + err.message;
+        }
+      }
+      loadAutoStopStatus();
+      /* refresh every 10 seconds while the page is open */
+      const asInterval = setInterval(loadAutoStopStatus, 10000);
+      window.addEventListener('beforeunload', () => clearInterval(asInterval));
+
       /* ---- game log (logs/latest.log) ---- */
       const glBody    = collapsible('game log', true);
       glBody.appendChild(el('p', { class: 'muted' }, 'in-game events — joins, chat, deaths, commands. last 200 lines of logs/latest.log.'));
       const glOut     = el('pre', { class: 'console', style: 'max-height: 400px;' }, 'loading...');
       const glRefresh = el('button', { class: 'btn primary', onclick: () => loadGameLog() }, 'refresh');
-      glBody.appendChild(el('div', { class: 'row' }, [glRefresh]));
+      const glDownload = el('a', {
+        class: 'btn',
+        href: '/api/servers/' + encodeURIComponent(name) + '/game-log/download',
+      }, 'download full log');
+      glBody.appendChild(el('div', { class: 'row' }, [glRefresh, glDownload]));
       glBody.appendChild(glOut);
 
       async function loadGameLog() {

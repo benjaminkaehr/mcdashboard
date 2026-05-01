@@ -7,7 +7,9 @@ import {
   listFiles, readServerFile, writeServerFile,
   getServerLogs, streamServerLogs,
   getAutoStopMinutes, setAutoStopMinutes,
+  getOnlinePlayerCount,
 } from '../servers.js';
+import { getEmptySince } from '../auto-stop.js';
 import { audit } from '../audit.js';
 import { requireAuth, requireRole } from '../roles.js';
 
@@ -113,6 +115,24 @@ export default async function (app) {
     return reply.send(stream);
   });
 
+  /* download the in-game log file (logs/latest.log) */
+  app.get('/api/servers/:name/game-log/download', { preHandler: requireRole('operator') }, async (req, reply) => {
+    const name = req.params.name;
+    if (!getServer(name)) return reply.code(404).send({ error: 'unknown server' });
+
+    try {
+      const content = await readServerFile(name, 'logs/latest.log');
+      audit(req, 'game-log.download', name);
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      reply.header('Content-Type', 'text/plain; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="${name}-game-${stamp}.log"`);
+      return reply.send(content);
+    } catch (e) {
+      return reply.code(404).send({ error: e.message });
+    }
+  });
+
   /* auto-stop config */
   app.get('/api/servers/:name/auto-stop', { preHandler: requireRole('operator') }, async (req, reply) => {
     if (!getServer(req.params.name)) return reply.code(404).send({ error: 'unknown server' });
@@ -131,6 +151,32 @@ export default async function (app) {
     } catch (e) {
       return reply.code(400).send({ error: e.message });
     }
+  });
+
+  /* live auto-stop status: how many players online, when it'll stop, etc.
+     polled by the UI to render "stops in X minutes" or "N players online". */
+  app.get('/api/servers/:name/auto-stop/status', { preHandler: requireRole('operator') }, async (req, reply) => {
+    const name = req.params.name;
+    if (!getServer(name)) return reply.code(404).send({ error: 'unknown server' });
+
+    const minutes = getAutoStopMinutes(name);
+    const status  = await getServerStatus(name).catch(() => ({ running: false }));
+
+    if (!status.running) {
+      return { minutes, running: false, players: null, empty_since: null, stops_in_seconds: null };
+    }
+
+    const players = await getOnlinePlayerCount(name);
+    const emptySince = getEmptySince(name);
+
+    let stopsInSeconds = null;
+    if (minutes > 0 && players === 0 && emptySince) {
+      const elapsed = Date.now() - emptySince;
+      const total   = minutes * 60 * 1000;
+      stopsInSeconds = Math.max(0, Math.round((total - elapsed) / 1000));
+    }
+
+    return { minutes, running: true, players, empty_since: emptySince, stops_in_seconds: stopsInSeconds };
   });
 
   app.get('/api/servers/:name/files', { preHandler: requireRole('operator') }, async (req, reply) => {

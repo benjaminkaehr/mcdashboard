@@ -27,6 +27,10 @@ const POLL_INTERVAL_MS = 60 * 1000;
 /* server_name -> timestamp (ms) when it was first seen empty */
 const emptySince = new Map();
 
+export function getEmptySince(name) {
+  return emptySince.get(name) || null;
+}
+
 async function tick(log) {
   for (const s of listServers()) {
     const minutes = getAutoStopMinutes(s.name);
