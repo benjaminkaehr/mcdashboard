@@ -133,7 +133,16 @@
     }
 
     async function refresh() {
-      breadcrumb.textContent = 'path: ' + cwd;
+      // Make the breadcrumb clickable to instantly jump back to root
+      breadcrumb.innerHTML = '';
+      breadcrumb.appendChild(document.createTextNode('path: '));
+      const rootLink = el('a', { href: '#', style: 'color: var(--accent); cursor: pointer;' }, 'root');
+      rootLink.onclick = (e) => { e.preventDefault(); cwd = '.'; refresh(); };
+      breadcrumb.appendChild(rootLink);
+      if (cwd !== '.') {
+        breadcrumb.appendChild(document.createTextNode(' / ' + cwd));
+      }
+
       listEl.innerHTML = '';
       editor.classList.add('hidden');
 

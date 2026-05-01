@@ -750,11 +750,20 @@
       slBody.appendChild(el('p', { class: 'muted' }, 'recent output from journalctl. last 200 lines of the systemd unit log.'));
       const slOut      = el('pre', { class: 'console', style: 'max-height: 400px;' }, 'loading...');
       const slRefresh  = el('button', { class: 'btn primary', onclick: () => loadSysLog() }, 'refresh');
+      
+      const slAutoLabel = el('label', { class: 'muted row', style: 'cursor:pointer;' }, [
+        el('input', { type: 'checkbox', id: 'auto-log' }), ' auto-refresh'
+      ]);
+
       const slDownload = el('a', {
         class: 'btn',
         href: '/api/servers/' + encodeURIComponent(name) + '/logs/download',
       }, 'download full log');
-      slBody.appendChild(el('div', { class: 'row' }, [slRefresh, slDownload]));
+      
+      slBody.appendChild(el('div', { class: 'row', style: 'justify-content: space-between; width: 100%;' }, [
+        el('div', { class: 'row' }, [slRefresh, slDownload]),
+        slAutoLabel
+      ]));
       slBody.appendChild(slOut);
 
       async function loadSysLog() {
@@ -762,8 +771,11 @@
         slRefresh.textContent = 'loading...';
         try {
           const r = await api('/api/servers/' + name + '/logs?lines=200');
-          slOut.textContent = r.text || '(no log entries)';
-          slOut.scrollTop = slOut.scrollHeight;
+          // Only update and scroll if the text actually changed
+          if (slOut.textContent !== r.text) {
+            slOut.textContent = r.text || '(no log entries)';
+            slOut.scrollTop = slOut.scrollHeight;
+          }
         } catch (err) {
           slOut.textContent = 'error: ' + err.message;
         } finally {
@@ -771,7 +783,15 @@
           slRefresh.textContent = 'refresh';
         }
       }
+      
       loadSysLog();
+      
+      // Auto-refresh logic
+      setInterval(() => {
+        if (document.getElementById('auto-log')?.checked) {
+          loadSysLog();
+        }
+      }, 3000);
 
       /* ---- files ---- */
       const fiBody = collapsible('files', true);
