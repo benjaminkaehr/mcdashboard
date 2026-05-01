@@ -81,9 +81,45 @@ async function run() {
   const typeChoice = await ask('choice (1/2/3)', '1');
   const mcVersion = await ask('minecraft version', '1.21.1');
 
-  const existingCount = serversCfg.servers.length;
-  const port = await ask('minecraft port', String(25565 + existingCount));
-  const rconPort = await ask('rcon port', String(25575 + existingCount));
+  // --- Port Conflict Resolution ---
+  // 1. Gather all currently used ports into a Set
+  const usedPorts = new Set();
+  for (const s of serversCfg.servers) {
+    if (s.port) usedPorts.add(s.port);
+    if (s.rcon && s.rcon.port) usedPorts.add(s.rcon.port);
+  }
+
+  // 2. Find the next available default ports
+  let defaultPort = 25565;
+  while (usedPorts.has(defaultPort)) defaultPort++;
+  
+  let defaultRconPort = 25575;
+  // Ensure the default RCON port doesn't clash with used ports OR the new defaultPort
+  while (usedPorts.has(defaultRconPort) || defaultRconPort === defaultPort) defaultRconPort++;
+
+  // 3. Ask for ports and validate them against the Set
+  let port;
+  while (true) {
+    port = parseInt(await ask('minecraft port', String(defaultPort)), 10);
+    if (usedPorts.has(port)) {
+      warn(`Port ${port} is already in use! Please choose another.`);
+    } else {
+      usedPorts.add(port); // Temporarily reserve it so RCON doesn't accidentally use it
+      break;
+    }
+  }
+
+  let rconPort;
+  while (true) {
+    rconPort = parseInt(await ask('rcon port', String(defaultRconPort)), 10);
+    if (usedPorts.has(rconPort)) {
+      warn(`Port ${rconPort} is already in use! Please choose another.`);
+    } else {
+      usedPorts.add(rconPort);
+      break;
+    }
+  }
+
   const ramMax = await ask('max RAM (e.g. 4G, 8G)', '4G');
   const ramMin = await ask('min RAM', '2G');
 
@@ -242,10 +278,11 @@ WantedBy=default.target
     name,
     display_name: displayName,
     folder,
+    port: port,
     systemd_unit: unitFile,
     rcon: {
       host: '127.0.0.1',
-      port: parseInt(rconPort, 10),
+      port: rconPort,
       password_env: envName
     }
   });
