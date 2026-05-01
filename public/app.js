@@ -51,9 +51,7 @@ export async function renderHeader(active) {
 
   const nav = el('nav', {}, [
     el('a', { href: '/index.html', class: active === 'home' ? 'active' : '' }, 'servers'),
-    // ADD THIS LINE BELOW
     me.is_super ? el('a', { href: '/add-server.html', class: active === 'add-server' ? 'active' : '' }, 'add server') : null,
-    
     me.is_super ? el('a', { href: '/users.html',    class: active === 'users'    ? 'active' : '' }, 'users')    : null,
     me.is_super ? el('a', { href: '/audit.html',    class: active === 'audit'    ? 'active' : '' }, 'audit')    : null,
     me.is_super ? el('a', { href: '/terminal.html', class: active === 'terminal' ? 'active' : '' }, 'terminal') : null,
