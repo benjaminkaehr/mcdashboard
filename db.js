@@ -130,6 +130,12 @@ export const stmts = {
       AND (ts >= ? OR ? = 0)
       AND (ts <= ? OR ? = 0)
   `),
+  getServerAuditEvents: db.prepare(`
+    SELECT ts, action
+    FROM audit_log
+    WHERE target = ? AND action IN ('server.start', 'server.stop')
+    ORDER BY ts ASC
+  `),
 
   getServerSetting:    db.prepare('SELECT value FROM server_settings WHERE server_name = ? AND key = ?'),
   setServerSetting:    db.prepare(`

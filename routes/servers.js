@@ -3,6 +3,7 @@
 import {
   listServers, getServer,
   startServer, stopServer, restartServer, getServerStatus,
+  getServerMetrics, getServerUptimeStats,
   rconCommand,
   listFiles, readServerFile, writeServerFile,
   downloadServerFile, uploadServerFile,
@@ -63,6 +64,20 @@ export default async function (app) {
 
   app.get('/api/servers/:name/status', { preHandler: requireRole('starter') }, async (req) => {
     return getServerStatus(req.params.name);
+  });
+
+  app.get('/api/servers/:name/metrics', { preHandler: requireRole('starter') }, async (req, reply) => {
+    const name = req.params.name;
+    if (!getServer(name)) return reply.code(404).send({ error: 'unknown server' });
+    return { metrics: getServerMetrics(name) };
+  });
+
+  app.get('/api/servers/:name/uptime', { preHandler: requireRole('starter') }, async (req, reply) => {
+    try {
+      return await getServerUptimeStats(req.params.name);
+    } catch (e) {
+      return reply.code(404).send({ error: e.message });
+    }
   });
 
   app.post('/api/servers/:name/start', { preHandler: requireRole('starter') }, async (req, reply) => {

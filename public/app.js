@@ -73,7 +73,7 @@ export async function renderHeader(active) {
 
 export function renderFooter() {
   document.body.appendChild(
-    el('footer', {}, 'minecraft dashboard - made by brotlaius')
+    el('footer', {}, 'minecraft dashboard - made by brotalius')
   );
 }
 

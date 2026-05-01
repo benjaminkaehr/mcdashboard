@@ -27,6 +27,7 @@ Login-protected, role-based, with audit logging, an in-browser terminal, and no 
 - Send arbitrary console commands via RCON
 - View **live online players** with position, world, health and food bars
 - View **in-game logs** (joins, chat, deaths) and **systemd logs** with download
+- View **host resource usage graphs** and **server uptime statistics** for each server
 - **Auto-stop** idle servers after a configurable duration with no players online
 - **Full file browser**: upload, download (any file type), edit text files, create folders, rename, delete
 - Manage dashboard users with per-server roles

@@ -6,6 +6,7 @@ import { readFile, writeFile, readdir, stat, mkdir, rename, rm } from 'node:fs/p
 import { createReadStream, createWriteStream } from 'node:fs';
 import { resolve, relative, isAbsolute, join, sep, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { Rcon } from 'rcon-client';
 
 import { stmts } from './db.js';
@@ -32,6 +33,11 @@ export function listServers() {
 export function getServer(name) {
   return REGISTRY.get(name);
 }
+
+const METRIC_SAMPLES = new Map();
+const METRIC_LAST = new Map();
+const MAX_METRIC_POINTS = 96;
+const METRIC_SAMPLE_INTERVAL_MS = 15000;
 
 function run(cmd, args) {
   return new Promise((resolveP) => {
@@ -74,6 +80,156 @@ export async function getServerStatus(name) {
   const running = r.stdout.trim() === 'active';
   return { running };
 }
+
+function parseSystemctlShowOutput(output) {
+  const out = {};
+  for (const line of output.split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx > 0) {
+      out[line.slice(0, idx)] = line.slice(idx + 1);
+    }
+  }
+  return out;
+}
+
+async function getFolderSize(root) {
+  let total = 0;
+  const items = await readdir(root, { withFileTypes: true });
+  for (const item of items) {
+    try {
+      const full = join(root, item.name);
+      if (item.isDirectory()) {
+        total += await getFolderSize(full);
+      } else if (item.isFile()) {
+        const st = await stat(full);
+        total += st.size;
+      }
+    } catch {
+      // ignore unreadable entries
+    }
+  }
+  return total;
+}
+
+export async function getServerResourceUsage(name) {
+  const s = getServer(name);
+  if (!s) throw new Error('unknown server');
+
+  const r = await run('systemctl', ['--user', 'show', '--property=ActiveState,ActiveEnterTimestamp,CPUUsageNSec,MemoryCurrent', s.systemd_unit]);
+  if (r.code !== 0) throw new Error(r.stderr || 'systemctl show failed');
+
+  const fields = parseSystemctlShowOutput(r.stdout);
+  return {
+    activeState: fields.ActiveState || 'unknown',
+    activeEnterTimestamp: fields.ActiveEnterTimestamp ? Date.parse(fields.ActiveEnterTimestamp) : null,
+    cpuUsageNSec: fields.CPUUsageNSec ? Number(fields.CPUUsageNSec) : null,
+    memoryCurrentBytes: fields.MemoryCurrent ? Number(fields.MemoryCurrent) : null,
+    diskBytes: await getFolderSize(s.folder),
+  };
+}
+
+export function getServerMetrics(name) {
+  const history = METRIC_SAMPLES.get(name);
+  return history ? [...history] : [];
+}
+
+function quantizeUptimeSegment(start, end, since) {
+  const segmentStart = Math.max(start, since);
+  const segmentEnd = Math.max(Math.min(end, Date.now()), since);
+  return Math.max(0, segmentEnd - segmentStart);
+}
+
+export async function getServerUptimeStats(name) {
+  const s = getServer(name);
+  if (!s) throw new Error('unknown server');
+
+  const now = Date.now();
+  const active = (await getServerStatus(name)).running;
+  const systemctlResult = await run('systemctl', ['--user', 'show', '--property=ActiveEnterTimestamp', s.systemd_unit]);
+  const activeFields = parseSystemctlShowOutput(systemctlResult.stdout);
+  const startedAt = activeFields.ActiveEnterTimestamp ? Date.parse(activeFields.ActiveEnterTimestamp) : null;
+
+  const events = stmts.getServerAuditEvents.all(name);
+  const since30d = now - 30 * 24 * 60 * 60 * 1000;
+  let openStart = null;
+  let lastRunSeconds = null;
+  let lastStopAt = null;
+  let total30d = 0;
+
+  for (const { ts, action } of events) {
+    if (action === 'server.start') {
+      openStart = ts;
+    } else if (action === 'server.stop') {
+      if (openStart != null) {
+        const duration = ts - openStart;
+        if (duration >= 0) {
+          lastRunSeconds = Math.floor(duration / 1000);
+          lastStopAt = ts;
+          total30d += quantizeUptimeSegment(openStart, ts, since30d);
+        }
+        openStart = null;
+      }
+    }
+  }
+
+  let currentRunSeconds = null;
+  if (active) {
+    if (openStart != null) {
+      currentRunSeconds = Math.floor((now - openStart) / 1000);
+    }
+    if (currentRunSeconds === null && startedAt != null) {
+      currentRunSeconds = Math.floor((now - startedAt) / 1000);
+    }
+  } else {
+    currentRunSeconds = 0;
+  }
+
+  if (active && openStart != null) {
+    total30d += quantizeUptimeSegment(openStart, now, since30d);
+    lastRunSeconds = currentRunSeconds;
+  }
+
+  return {
+    running: active,
+    started_at: startedAt,
+    current_run_seconds: currentRunSeconds,
+    last_stop_at: lastStopAt,
+    last_run_seconds: lastRunSeconds,
+    total_uptime_last_30_days_seconds: Math.floor(total30d / 1000),
+  };
+}
+
+async function sampleMetrics() {
+  const now = Date.now();
+  const cores = os.cpus().length || 1;
+
+  for (const [name] of REGISTRY) {
+    try {
+      const usage = await getServerResourceUsage(name);
+      const prev = METRIC_LAST.get(name);
+      let cpuPercent = null;
+      if (usage.cpuUsageNSec != null && prev?.cpuUsageNSec != null && prev.ts < now) {
+        const cpuDelta = usage.cpuUsageNSec - prev.cpuUsageNSec;
+        const elapsedMs = now - prev.ts;
+        if (elapsedMs > 0) {
+          cpuPercent = cpuDelta / (elapsedMs * 1e6 * cores) * 100;
+          if (Number.isFinite(cpuPercent)) cpuPercent = Math.max(0, Math.min(100, Math.round(cpuPercent * 100) / 100));
+          else cpuPercent = null;
+        }
+      }
+      METRIC_LAST.set(name, { ts: now, cpuUsageNSec: usage.cpuUsageNSec });
+      const history = METRIC_SAMPLES.get(name) || [];
+      history.push({ ts: now, cpu: cpuPercent, memory: usage.memoryCurrentBytes, disk: usage.diskBytes });
+      while (history.length > MAX_METRIC_POINTS) history.shift();
+      METRIC_SAMPLES.set(name, history);
+    } catch {
+      // best effort; skip servers we cannot sample
+    }
+  }
+}
+
+sampleMetrics().catch(() => {});
+setInterval(() => { sampleMetrics().catch(() => {}); }, METRIC_SAMPLE_INTERVAL_MS);
 
 /* ---------- logs ---------- */
 

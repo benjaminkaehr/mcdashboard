@@ -48,6 +48,35 @@
       margin: 0.5rem 0;
       font-size: 0.85rem;
     }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    .chart-panel {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 1rem;
+    }
+    .chart-panel h3 {
+      margin-bottom: 0.5rem;
+      font-size: 0.95rem;
+    }
+    .chart-panel canvas {
+      width: 100%;
+      height: 140px;
+      background: #050505;
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .metrics-summary {
+      margin-top: 0.75rem;
+      font-family: monospace;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -91,6 +120,139 @@
       power.appendChild(button('restart', 'btn warn',   '/api/servers/' + name + '/restart'));
     }
     main.appendChild(power);
+
+    const metricsBody = collapsible('metrics', false);
+    metricsBody.appendChild(el('p', { class: 'muted' }, 'server resource usage and uptime. updates every 15 seconds.'));
+    const metricsStatus = el('div', { class: 'muted' }, 'loading metrics...');
+    const metricsSummary = el('div', { class: 'metrics-summary' }, '');
+    const cpuCanvas = el('canvas', { width: '600', height: '140' });
+    const memCanvas = el('canvas', { width: '600', height: '140' });
+    const diskCanvas = el('canvas', { width: '600', height: '140' });
+    metricsBody.appendChild(metricsStatus);
+    metricsBody.appendChild(el('div', { class: 'chart-grid' }, [
+      el('div', { class: 'chart-panel' }, [el('h3', {}, 'CPU usage'), cpuCanvas]),
+      el('div', { class: 'chart-panel' }, [el('h3', {}, 'Memory usage'), memCanvas]),
+      el('div', { class: 'chart-panel' }, [el('h3', {}, 'Disk usage'), diskCanvas]),
+    ]));
+    metricsBody.appendChild(metricsSummary);
+
+    function drawLineChart(canvas, values, color, unit) {
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth * dpr;
+      const height = canvas.clientHeight * dpr;
+      canvas.width = width;
+      canvas.height = height;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+      const points = values.map(v => (v == null ? null : Number(v)));
+      const valid = points.filter(v => v != null && Number.isFinite(v));
+      if (!valid.length) {
+        ctx.fillStyle = 'var(--muted)';
+        ctx.font = '12px ' + (window.getComputedStyle(canvas).fontFamily || 'monospace');
+        ctx.fillText('no metrics available yet', 12, h / 2);
+        return;
+      }
+      const min = Math.min(...valid, 0);
+      const max = Math.max(...valid, 1);
+      const padding = 12;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let first = true;
+      for (let i = 0; i < points.length; i++) {
+        const value = points[i];
+        const x = padding + (i / Math.max(1, points.length - 1)) * (w - padding * 2);
+        if (value == null) {
+          first = true;
+          continue;
+        }
+        const y = h - padding - ((value - min) / Math.max(0.0001, max - min)) * (h - padding * 2);
+        if (first) {
+          ctx.moveTo(x, y);
+          first = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+      ctx.fillStyle = color;
+      for (let i = 0; i < points.length; i++) {
+        const value = points[i];
+        if (value == null) continue;
+        const x = padding + (i / Math.max(1, points.length - 1)) * (w - padding * 2);
+        const y = h - padding - ((value - min) / Math.max(0.0001, max - min)) * (h - padding * 2);
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'var(--muted)';
+      ctx.font = '12px ' + (window.getComputedStyle(canvas).fontFamily || 'monospace');
+      ctx.fillText((max || 0).toFixed(1) + unit, w - padding - 42, padding + 10);
+      ctx.fillText((min || 0).toFixed(1) + unit, w - padding - 42, h - padding);
+    }
+
+    function formatBytes(bytes) {
+      if (bytes == null) return '—';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+      return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+
+    function formatDuration(seconds) {
+      if (seconds == null) return '—';
+      const s = Math.max(0, Math.floor(seconds));
+      const days = Math.floor(s / 86400);
+      const hours = Math.floor((s % 86400) / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      const parts = [];
+      if (days) parts.push(days + 'd');
+      if (hours) parts.push(hours + 'h');
+      if (mins) parts.push(mins + 'm');
+      parts.push(secs + 's');
+      return parts.join(' ');
+    }
+
+    async function loadMetrics() {
+      try {
+        const [metrics, uptime] = await Promise.all([
+          api('/api/servers/' + encodeURIComponent(name) + '/metrics'),
+          api('/api/servers/' + encodeURIComponent(name) + '/uptime'),
+        ]);
+
+        metricsStatus.textContent = '';
+        const points = metrics.metrics || [];
+        drawLineChart(cpuCanvas, points.map(p => p.cpu), '#4caf50', '%');
+        drawLineChart(memCanvas, points.map(p => p.memory ? p.memory / 1024 / 1024 : null), '#42a5f5', ' MB');
+        drawLineChart(diskCanvas, points.map(p => p.disk ? p.disk / 1024 / 1024 / 1024 : null), '#f4b400', ' GB');
+
+        const last = points[points.length - 1] || {};
+        const currentCpu = last.cpu != null ? last.cpu.toFixed(1) + '%' : '—';
+        const currentMem = last.memory != null ? formatBytes(last.memory) : '—';
+        const currentDisk = last.disk != null ? formatBytes(last.disk) : '—';
+        const uptimeText = uptime.running
+          ? 'running for ' + formatDuration(uptime.current_run_seconds)
+          : 'stopped';
+        const lastRunText = uptime.last_run_seconds != null ? formatDuration(uptime.last_run_seconds) : '—';
+        const total30dText = formatDuration(uptime.total_uptime_last_30_days_seconds);
+        metricsSummary.textContent =
+          'current CPU: ' + currentCpu + '\n' +
+          'current memory: ' + currentMem + '\n' +
+          'current disk: ' + currentDisk + '\n' +
+          'uptime: ' + uptimeText + '\n' +
+          'last run: ' + lastRunText + '\n' +
+          'last 30d total: ' + total30dText;
+      } catch (err) {
+        metricsStatus.textContent = 'error loading metrics: ' + err.message;
+      }
+    }
+
+    loadMetrics();
+    setInterval(loadMetrics, 15000);
 
     function button(label, cls, url) {
       return el('button', {
