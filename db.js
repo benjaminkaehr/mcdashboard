@@ -118,7 +118,7 @@ export const stmts = {
       AND (target LIKE ? OR ? = '')
       AND (ts >= ? OR ? = 0)
       AND (ts <= ? OR ? = 0)
-    ORDER BY ts DESC LIMIT ?
+    ORDER BY ts DESC LIMIT ? OFFSET ?
   `),
   countAudit: db.prepare(`
     SELECT COUNT(*) as total

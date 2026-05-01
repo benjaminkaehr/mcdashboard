@@ -116,7 +116,7 @@ export default async function (app) {
     const action = req.query.action?.trim() || null;
     const target = req.query.target?.trim() || null;
     const fromDate = req.query.from ? new Date(req.query.from).getTime() : null;
-    const toDate = req.query.to ? new Date(req.query.to).getTime() : null;
+    const toDate = req.query.to ? new Date(req.query.to).getTime() + 86399999 : null;
 
     // Prepare LIKE patterns (empty string means no filter)
     const usernamePattern = username ? `%${username}%` : '';
@@ -144,7 +144,8 @@ export default async function (app) {
       targetPattern, target || '',
       fromTimestamp, fromDate || 0,
       toTimestamp, toDate || 0,
-      limit
+      limit,
+      offset // <--- Add this!
     );
 
     return {
@@ -161,7 +162,7 @@ export default async function (app) {
     const action = req.query.action?.trim() || null;
     const target = req.query.target?.trim() || null;
     const fromDate = req.query.from ? new Date(req.query.from).getTime() : null;
-    const toDate = req.query.to ? new Date(req.query.to).getTime() : null;
+    const toDate = req.query.to ? new Date(req.query.to).getTime() + 86399999 : null;
 
     // Prepare LIKE patterns (empty string means no filter)
     const usernamePattern = username ? `%${username}%` : '';
@@ -171,7 +172,6 @@ export default async function (app) {
     const fromTimestamp = fromDate || 0;
     const toTimestamp = toDate || 0;
 
-    // Get all matching entries (no limit for export)
     const entries = stmts.searchAudit.all(
       usernamePattern, username || '',
       ipPattern, ip || '',
@@ -179,7 +179,8 @@ export default async function (app) {
       targetPattern, target || '',
       fromTimestamp, fromDate || 0,
       toTimestamp, toDate || 0,
-      10000 // Reasonable limit for export
+      10000, // Reasonable limit for export
+      0      // <--- Add offset 0 here!
     );
 
     // Convert to CSV
