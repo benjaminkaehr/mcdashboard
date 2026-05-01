@@ -1,4 +1,4 @@
-[Unit]
+[Unit] 
 Description=minecraft dashboard
 After=network-online.target
 Wants=network-online.target
