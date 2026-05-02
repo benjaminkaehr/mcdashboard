@@ -18,7 +18,7 @@ import {
 } from '../world.js';
 import { getEmptySince } from '../auto-stop.js';
 import { audit } from '../audit.js';
-import { requireAuth, requireRole } from '../roles.js';
+import { requireAuth, requireRole, requireSuper} from '../roles.js';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
