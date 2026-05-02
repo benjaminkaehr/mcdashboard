@@ -293,6 +293,20 @@
 
         metricsStatus.textContent = '';
         const points = metrics.metrics || [];
+        // Check for health alerts based on your monitor.js logic
+        const isHighCpu = last.cpu > 90;
+        // Assuming 4G limit as used in your monitor.js helper
+        const isHighMem = last.memory > (4 * 1024 * 1024 * 1024 * 0.95); 
+
+        if (isHighCpu || isHighMem) {
+          const reason = isHighCpu ? 'High CPU' : 'High RAM Usage';
+          metricsStatus.innerHTML = `
+            <div class="running-banner" style="border-color: #aa5050; background: #2a1010; color: #ffaaaa; margin-bottom: 1rem;">
+              ⚠ <strong>Health Alert:</strong> ${reason} detected. Server performance may be impacted.
+            </div>`;
+        }
+        
+    // ... keep the rest of your chart drawing code ...
         // CPU passes '100' at the end to lock the maximum scale to 100%
         drawLineChart(cpuCanvas, points.map(p => p.cpu), '#4caf50', '%', 100);
         

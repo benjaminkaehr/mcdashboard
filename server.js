@@ -22,7 +22,7 @@ import httpProxy from '@fastify/http-proxy';
 import multipart from '@fastify/multipart';
 
 import { loadUserFromCookie } from './auth.js';
-
+import { initMonitoring } from './monitor.js';
 import authRoutes from './routes/auth.js';
 import serverRoutes from './routes/servers.js';
 import userRoutes from './routes/users.js';
@@ -114,3 +114,4 @@ try {
 }
 
 startAutoStop(app.log);
+initMonitoring(app);
