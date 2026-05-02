@@ -827,6 +827,64 @@
       fiBody.appendChild(el('p', { class: 'muted' }, 'browse and edit text files inside the server folder.'));
       fiBody.appendChild(el('p', {}, el('a', { href: '/files.html?name=' + encodeURIComponent(name) }, 'open file browser →')));
     }
+    if (me.is_super) {
+        /* ---- danger zone: remove server ---- */
+        const dzBody = collapsible('danger zone', true);
+
+        dzBody.appendChild(el('p', { class: 'muted', style: 'color: #c84040;' },
+          'remove this server from the dashboard. this stops the server, deletes its systemd unit, removes the entry from servers.json, and removes its RCON password from .env. world files are kept by default — check the box if you also want to delete them (this is permanent).'
+        ));
+
+        const deleteFilesCheckbox = el('input', { type: 'checkbox', id: 'rm-delete-files' });
+        const dfLabel = el('label', { class: 'row', style: 'gap: 0.4rem; margin: 0.5rem 0;' }, [
+          deleteFilesCheckbox,
+          el('span', { style: 'color: #c84040;' }, 'also delete server folder (worlds, jar, config) — PERMANENT'),
+        ]);
+        dzBody.appendChild(dfLabel);
+
+        const removeBtn = el('button', { class: 'btn danger', onclick: async () => {
+          const deleteFiles = deleteFilesCheckbox.checked;
+
+          /* step 1: are you sure */
+          const warning = deleteFiles
+            ? `Remove "${name}" AND DELETE ALL ITS FILES?\n\nThis is permanent. The world data will be gone forever.`
+            : `Remove "${name}" from the dashboard?\n\nThe server folder at ${server.folder || '/srv/mcserv/' + name} will be kept — you can re-add it later.`;
+          if (!confirm(warning)) return;
+
+          /* step 2: type the name to confirm */
+          const typed = prompt(`To confirm, type the server name exactly:\n\n${name}`);
+          if (typed !== name) {
+            if (typed !== null) alert(`Did not match. Got "${typed}", expected "${name}". Aborted.`);
+            return;
+          }
+
+          /* fire it */
+          removeBtn.disabled = true;
+          removeBtn.textContent = 'removing...';
+          try {
+            const res = await api('/api/servers/' + encodeURIComponent(name), {
+              method: 'DELETE',
+              body: { confirmName: name, deleteFiles },
+            });
+
+            const summary =
+              'Removed:\n' +
+              '  systemd unit: ' + (res.unit_removed ? 'yes' : 'no') + '\n' +
+              '  servers.json: ' + (res.json_removed ? 'yes' : 'no') + '\n' +
+              '  .env entry:   ' + (res.env_removed ? 'yes' : 'no') + '\n' +
+              '  folder:       ' + (res.folder_deleted ? 'yes (gone)' : 'no (kept)');
+            alert(summary + '\n\nReturning to server list.');
+            location.href = '/index.html';
+          } catch (err) {
+            alert('removal failed: ' + err.message);
+            removeBtn.disabled = false;
+            removeBtn.textContent = 'remove server';
+          }
+        }}, 'remove server');
+
+        dzBody.appendChild(removeBtn);
+      }
+
   </script>
 </body>
 </html>

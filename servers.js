@@ -92,6 +92,75 @@ function parseSystemctlShowOutput(output) {
   return out;
 }
 
+export async function removeServer(name, { deleteFiles = false } = {}) {
+  const s = getServer(name);
+  if (!s) throw new Error(`unknown server: ${name}`);
+
+  const folder  = s.folder;
+  const unit    = s.systemd_unit;
+  const envVar  = s.rcon?.password_env;
+  const result  = { stopped: false, unit_removed: false, json_removed: false, env_removed: false, folder_deleted: false };
+
+  /* 1. stop and disable the systemd service (errors OK — might already be stopped) */
+  try {
+    await systemctl('stop', unit);
+    result.stopped = true;
+  } catch { /* fine */ }
+  try { await systemctl('disable', unit); } catch { /* fine */ }
+
+  /* 2. delete the unit file */
+  const unitPath = join(process.env.HOME, '.config/systemd/user', unit);
+  if (existsSync(unitPath)) {
+    await rm(unitPath, { force: true });
+    result.unit_removed = true;
+  }
+  try { execSync('systemctl --user daemon-reload'); } catch { /* fine */ }
+
+  /* 3. remove from servers.json */
+  const jsonPath = join(DASHBOARD, 'servers.json');
+  try {
+    const cfg = JSON.parse(await readFile(jsonPath, 'utf8'));
+    const before = cfg.servers.length;
+    cfg.servers = cfg.servers.filter(srv => srv.name !== name);
+    if (cfg.servers.length < before) {
+      await writeFile(jsonPath, JSON.stringify(cfg, null, 2));
+      result.json_removed = true;
+    }
+  } catch (e) {
+    throw new Error(`failed to update servers.json: ${e.message}`);
+  }
+
+  /* 4. remove RCON password from .env */
+  if (envVar) {
+    const envPath = join(DASHBOARD, '.env');
+    try {
+      let envData = await readFile(envPath, 'utf8');
+      const re = new RegExp(`^${envVar}=.*\\n?`, 'm');
+      if (re.test(envData)) {
+        envData = envData.replace(re, '');
+        await writeFile(envPath, envData);
+        result.env_removed = true;
+      }
+    } catch { /* env might not exist or not contain the var, that's OK */ }
+  }
+
+  /* 5. optionally delete the server folder */
+  if (deleteFiles && folder && existsSync(folder)) {
+    try {
+      await rm(folder, { recursive: true, force: true });
+      result.folder_deleted = true;
+    } catch (e) {
+      // log but don't abort — the json+systemd+env are already gone
+      console.error(`couldn't delete folder ${folder}: ${e.message}`);
+    }
+  }
+
+  /* 6. update in-memory registry so subsequent calls don't see it */
+  REGISTRY.delete(name);
+
+  return result;
+}
+
 async function getFolderSize(root) {
   let total = 0;
   const items = await readdir(root, { withFileTypes: true });

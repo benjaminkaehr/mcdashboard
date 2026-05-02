@@ -11,6 +11,7 @@ import {
   getServerLogs, streamServerLogs,
   getAutoStopMinutes, setAutoStopMinutes,
   getOnlinePlayerCount,
+  removeServer,
 } from '../servers.js';
 import {
   listWorldFolders, downloadWorldZip, uploadAndReplaceWorld,
@@ -351,6 +352,30 @@ export default async function (app) {
       return data;
     } catch {
       return reply.code(500).send({ error: 'could not read status file' });
+    }
+  });
+
+  /* ---- remove server ---- */
+  app.delete('/api/servers/:name', { preHandler: requireSuper }, async (req, reply) => {
+    const name = req.params.name;
+    const { confirmName, deleteFiles = false } = req.body || {};
+
+    // belt-and-suspenders: require the client to send the same name as the URL param
+    if (confirmName !== name) {
+      return reply.code(400).send({ error: 'confirmName must match the server name' });
+    }
+
+    if (!getServer(name)) {
+      return reply.code(404).send({ error: 'unknown server' });
+    }
+
+    try {
+      const result = await removeServer(name, { deleteFiles: !!deleteFiles });
+      audit(req, 'server.remove', name, { deleteFiles: !!deleteFiles, ...result });
+      return { ok: true, ...result };
+    } catch (e) {
+      audit(req, 'server.remove_failed', name, { error: e.message });
+      return reply.code(500).send({ error: e.message });
     }
   });
 
