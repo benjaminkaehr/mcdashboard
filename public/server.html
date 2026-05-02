@@ -290,6 +290,8 @@
           api('/api/servers/' + encodeURIComponent(name) + '/metrics'),
           api('/api/servers/' + encodeURIComponent(name) + '/uptime'),
         ]);
+        
+        const last = points[points.length - 1] || {};
 
         metricsStatus.textContent = '';
         const points = metrics.metrics || [];
@@ -316,7 +318,6 @@
         // Disk stays the same
         drawLineChart(diskCanvas, points.map(p => p.disk ? p.disk / 1024 / 1024 / 1024 : null), '#f4b400', ' GB');
 
-        const last = points[points.length - 1] || {};
         const currentCpu = last.cpu != null ? last.cpu.toFixed(1) + '%' : '—';
         const currentMem = last.memory != null ? formatBytes(last.memory) : '—';
         const currentDisk = last.disk != null ? formatBytes(last.disk) : '—';
